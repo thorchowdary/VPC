@@ -1,0 +1,140 @@
+virtual private network:(vpc)
+------------------------------------------------------------------------------------
+it is network layer, it is for security purpose and it has group of private ip adderess
+by defualt the name itself suggest vpc is private and all ips adderess are private
+
+key components of vpc:
+----------------------
+NAT-GW(will have elastic Ip)
+IG-GW
+VPC - endpoint
+
+creating vpc:
+------------------------------------------------------------------
+we have to give ipv2_cidr range
+10.0.0.0/25  ---- x.x.x.x/n --- 255.255.255.255/n
+y = 32-n
+2^n no.of ip adderess will be allocated to vpc
+now we have divide them to the subnets
+
+generally we will create these 3 subnets (private subnets, (private-data subnet, public subnet)
+we will create subnets in all availability zones to make it HA(High availability)
+we will create private subnet first and we will allocate more ip adderess to it( we are creating it first because 
+since more traffic will be in the private subnet(app subnet) so will allocate more ips so that we can manage ips for other subnets if we create less usage ip adderess
+first we end up with the shortage of ip's)
+
+
+steps:
+==========================
+how to create vpc 
+1) account---region---
+ask: naming convention 
+dev-vpc 
+cidr range :10.0.0.0/16 
+subnet decision 
+
+1) create vpc --CIDR -10.0.0.0/16 
+note: enable dns host name in vpc settings
+
+Observation: VPC: routeTable, NACL , default sg 
+
+2) create subnets 
+dev-private-1a-subnet1 /18 - 10.0.0.0/18---check last ip 10.0.63.254
+dev-private-1b-subnet2 /18 - 10.0.64.0/18---check last ip 10.0.127.254
+dev-private-1c-subnet3 /18 - 10.0.128.0/18---check last ip address 10.0.191.254
+
+dev-data-1a-subnet1 /21- 10.0.192.0/21--check last ip 10.0.199.254--- 	
+dev-data-1b-subnet2 /21- 10.0.200.0/21--check last ip 10.0.207.254
+dev-data-1c-subnet3 /21- 10.0.208.0/21--check last ip 10.0.215.254
+
+dev-public-1a-subnet1 /21 - 10.0.216.0/21--check last ip 10.0.223.254
+dev-public-1b-subnet2 /21 - 10.0.224.0/21---check last ip 10.0.231.254
+dev-public-1c-subnet3 /21 - 10.0.232.0/21 --check last ip 10.0.239.254 
+note: convert private to public by changing auto-assign public ip assignment
+
+3) create igw and attach to vpc
+4) create nat-gw in public subnet , observe allocate eip 
+5) create route tables
+associate public subnets into public-route
+associate private subnets into private-route 
+Edit routes: 
+public route---0.0.0.0/0---igw
+private route---0.0.0.0/0--nat-gw 
+
+0.0.0.0/0----igw---publicRoute----publicSubnet---alb/bastion---
+
+igw---vpc  publicRoute------publicSubnet  nat-gw  privateSubnets
+
+lab: telnet/nc test from bastion to apache 
+create timeout and solve it. 
+
+why vpc endpoint:
+----------------------
+to access s3 from ec2 we have to go via nat-gw----internet---s3 which may lead 
+hackers can hack and the cost is also more because bill will come for network out
+
+in-order to overcome the issue we use vpc-endpoint this will communicate within
+aws network, if you want to access any aws services, it wont take packets out to internet 
+and to s3 
+
+withoutvpc-endpoint:
+-----------------------
+ec2------nat-gw----internet-----s3
+
+with vpc endpoint:
+-----------------------
+ec2-----nat-gw---vpc-endpoint---s3
+
+vpc endpoint:
+----------------
+if you want to access aws service within vpc
+---Don't go via nat-gw
+---create vpc endpoint and map it to private route table
+vpc endpoint types:
+----------------------
+1.Gateway endpoint
+2.interface endpoint
+
+i wanted to access s3 bucket from private subnet/private ec2
+by default vpc/private subnet goes via nat-gw to s3 
+if we wanted to avoud, create endpoints
+
+we have to route vpc end point to  private route table since we are using
+vpc endpoint to make connection secure and to make less cost since intially
+we are going out with nat-gw to the any aws service and internet
+now with vpc endpoint, it may leads to cost effective 
+in aws the cost is for network out which is nat-gw in our case
+so we are replacing the nat-gw with endpoint to communicate within aws 
+network, which will reduces the cost
+
+
+ec2----nat-gw---vpc endpoint -----aws services
+
+-------------------------------
+mistake i did and solved it
+-------------------------------
+
+i created nat-gw in private sub net and routeded in private route table
+and i log in into the ec3 via bastion and tryied installing packages but 
+getting time out, i was debugging using amazon reachability analyzer from apache 
+to bastion and versa and i did not found any problem
+
+lateri went and looked on in which subnet do i kept my nat-gw i kept it in private subnet
+it is suppose to be in public subnet 
+i created one more nat-gw in public subnet 
+and routed into the private route table and it worked
+"here is the mistake we should creat nat-ge i public subnet not in private subnet"
+
+why we need to create nat-gw only in public subnet:.?
+becuse:
+your ec2 will be in private subnet,inorder to come from private to public we need a bridge
+kind of thing to come,so natgw is the bridge btwn private and public
+
+by the way to go inside the subnets i.e into the ec2's we use igw
+from ec2 to outside we use nat-gw(allocated elastic ip)
+*** max 5 elastic ips for region
+
+---------------------------------------------------
+
+if i wanted to track how many requests/how many ips are coming and how many
+ips are rejecting/inbound/outbound flows we use "vpc flowlogs"
